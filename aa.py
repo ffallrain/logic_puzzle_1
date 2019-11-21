@@ -292,17 +292,33 @@ def place_next( current_board, current_index ):
     if count %1000 == 0:
         print (">>>>> Trying %d times"%count)
     if current_index == 10:
-        print(">>>>> Bravo !")
         if check_solution(global_piece_loc):
             make_graphic(global_piece_loc,found_count)
             found_count += 1
-            return True
+            print(">>>>> Bravo !")
+            ofp = open("solutions.data",'a')
+            ofp.write("%s\n"%str(global_piece_loc))
+            ofp.close()
+            return False
         else:
             return False
 
     name = piece_list[current_index]
     current_piece = all_pieces[name]
-    current_all_loc = generate_logic_all_loc( current_piece, board=current_board, all_loc = piece_locs[name])
+    if name == 'h':
+        tmp_all_loc = generate_logic_all_loc( current_piece, board=current_board, all_loc = piece_locs[name])
+        current_all_loc = list()
+        for loc in tmp_all_loc:
+            if loc[2] < 4 :
+                if loc[0] == 0 and loc[1] == 0:
+                    current_all_loc.append(loc)
+                if loc[0] == 0 and loc[1] == 1:
+                    current_all_loc.append(loc)
+                if loc[0] == 1 and loc[1] == 1:
+                    current_all_loc.append(loc)
+    else:
+        current_all_loc = generate_logic_all_loc( current_piece, board=current_board, all_loc = piece_locs[name])
+
     for current_loc in current_all_loc:
         # print(">>>>> Placing %s ."%name)
         global_piece_loc[name] = current_loc
