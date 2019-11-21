@@ -49,8 +49,9 @@ def generate_all_loc():
     return loc
 
 # generate logical all possible locations
-def generate_logic_all_loc(piece,board=None):
-    all_loc = generate_all_loc()
+def generate_logic_all_loc(piece,board=None,all_loc = None):
+    if all_loc is None:
+        all_loc = generate_all_loc()
     keep_loc = list()
     for loc in all_loc:
         ids = derive_piece_line_ids(piece,loc)
@@ -96,7 +97,8 @@ def derive_piece_lines( ids ):
     if check_lines_in_board(ids):
         pass
     else:
-        return False
+        pass
+        # return False
     for a in ids['v'] : # vertical
         x,y = a
         x0 = x
@@ -119,7 +121,7 @@ def compute_piece_lines( piece, loc ):
     lines = derive_piece_lines(ids)
     return lines
 
-def check_lines_in_board( ids,board = None ):
+def check_lines_in_board( ids,board = {'h':list(),'v':list()} ):
     in_board = True
     for a in ids['v'] : # vertical
         x,y=a
@@ -133,7 +135,7 @@ def check_lines_in_board( ids,board = None ):
             pass
         else:
             in_board = False
-    if board != None:
+    if True: # board != None:
         for a in ids['v']:
             if a in board['v']:
                 in_board = False
@@ -141,6 +143,53 @@ def check_lines_in_board( ids,board = None ):
             if a in board['h']:
                 in_board = False
     return in_board
+
+def make_graphic( piece_loc, found_count):
+    if not os.path.isdir("data"):
+        os.mkdir("data")
+    fig,ax = plt.subplots()
+    board_lines = make_board()
+    draw_lines(board_lines,ax)
+    for name,loc in piece_loc.items():
+        print(name,loc)
+        color = piece_colors[name]
+        piece = all_pieces[name]
+        piece_lines = compute_piece_lines( piece, loc )
+        print(piece_lines)
+        draw_piece(piece_lines,ax,color=color)
+    plt.subplots_adjust(left=0, right=1, bottom=0, top=1)
+    plt.axis('equal')
+    plt.axis('off')
+    plt.savefig("data/%d.png"%(found_count,))
+    plt.close()
+
+def check_solution( piece_loc ):
+    all_cross_points = set()
+    for name in ['l','u','t','j']:
+        cross_point = np.array(piece_cross_point[name])
+        loc = piece_loc[name]
+        # Flip
+        if loc[2] in (4,5,6,7):
+            for i in range(len(cross_point)):
+                cross_point[i][0] = 0 - cross_point[i][0]
+        # Rotate
+        new_cross_point = list()
+        A = math.pi * 0.5 * (loc[2]%4)
+        cosA = math.cos(A)
+        sinA = math.sin(A)
+        for tmp in cross_point :
+            x,y = tmp
+            nx = x * cosA - y * sinA
+            ny = x * sinA + y * cosA
+            new_cross_point.append( (nx,ny) )
+        for x,y in new_cross_point:
+            if (x+loc[0],y+loc[1]) in all_cross_points:
+                return False
+            else:
+                all_cross_points.add( (x+loc[0],y+loc[1]) )
+    print(all_cross_points)
+    return True
+
 
 if True:
     piece_h = ( (0,1) ,(1,0), (-1,0),(-1,2) )
@@ -153,6 +202,15 @@ if True:
     piece_n = ( (-1,0),(-1,2),(0,1), (0,-1) )
     piece_t = ( (-1,0),(-1,2),(-1,4),(0,1)  )
     piece_y = ( (-1,2),(1,0), (0,1), (2,1)  )
+    cross_points_l = ( (-0.5,0.5), (-0.5,1.5) )
+    cross_points_j = ( (-0.5,0.5), )
+    cross_points_u = ( (0.5,-0.5), )
+    cross_points_t = ( (-0.5,1.5), )
+    piece_cross_point = { "l" : cross_points_l, "l" : cross_points_l,
+                          "j" : cross_points_u, "j" : cross_points_j,
+                          "t" : cross_points_t, "t" : cross_points_t,
+                          "u" : cross_points_u, "u" : cross_points_u,
+    }
 
     all_pieces = { 'h': piece_h ,
                    'x': piece_x ,
@@ -199,25 +257,80 @@ if True:
     for name,piece in all_pieces.items():
         piece_locs[name] = _generate_legal_loc_for_piece(piece)
 
-for name,piece in all_pieces.items():
-    print(name,len(piece_locs[name]))
+piece_list = list(all_pieces.keys())
+current_board = list()
 
-os.system("rm -r ?")
-for name,piece in all_pieces.items():
-    i = 0
-    color = piece_colors[name]
-    os.system("mkdir %s"%name)
-    for loc in piece_locs[name]:
-        piece_lines = compute_piece_lines( piece, loc )
-        if piece_lines:
-            fig, ax = plt.subplots()
-            board_lines = make_board()
-            draw_lines(board_lines,ax)
-            draw_piece(piece_lines,ax,color=color)
-            plt.subplots_adjust(left=0, right=1, bottom=0, top=1)
-            plt.axis('equal')
-            plt.axis('off')
-            plt.savefig("%s/%d.png"%(name,i))
-            plt.close()
-        i += 1
+def place_piece(board,piece,loc):
+    ids = derive_piece_line_ids(piece,loc)
+    for a in ids['h']: # horizonal  
+        board['h'].append(a)
+    for a in ids['v']: # vertical
+        board['v'].append(a)
+    # print(">>>>> Placed piece")
+    # print(">>>>> Current board: %s"%board)
 
+def remove_piece(board,piece,loc):
+    ids = derive_piece_line_ids(piece,loc)
+    for a in ids['h']: # horizonal  
+        board['h'].remove(a)
+    for a in ids['v']: # vertical
+        board['v'].remove(a)
+
+global_piece_loc = dict()
+for name in piece_list:
+    global_piece_loc[name] = None
+
+
+count = 0
+found_count = 0
+def place_next( current_board, current_index ):
+    global found_count
+    global count
+    global global_piece_loc
+
+    count += 1
+    if count %1000 == 0:
+        print (">>>>> Trying %d times"%count)
+    if current_index == 10:
+        print(">>>>> Bravo !")
+        if check_solution(global_piece_loc):
+            make_graphic(global_piece_loc,found_count)
+            found_count += 1
+            return True
+        else:
+            return False
+
+    name = piece_list[current_index]
+    current_piece = all_pieces[name]
+    current_all_loc = generate_logic_all_loc( current_piece, board=current_board, all_loc = piece_locs[name])
+    for current_loc in current_all_loc:
+        # print(">>>>> Placing %s ."%name)
+        global_piece_loc[name] = current_loc
+        place_piece( current_board, current_piece, current_loc )
+        result = place_next( current_board, current_index+1 )
+        if result:
+            ids = derive_piece_line_ids(current_piece,current_loc)
+            print(">>>>> Current piece: %s, loc: %s"%(name,ids))
+            return True
+        global_piece_loc[name] = None
+        remove_piece( current_board, current_piece,current_loc )
+    return False
+
+blank_board = { 'h':list(),'v':list() }
+place_next(blank_board,0 )
+
+# piece_loc = { 
+#     "h" :(0, 0, 0),
+#     "x" :(0, 2, 0),
+#     "w" :(0, 1, 0),
+#     "u" :(0, 3, 6),
+#     "s" :(3, 0, 5),
+#     "l" :(2, 3, 2),
+#     "j" :(3, 1, 5),
+#     "n" :(3, 3, 2),
+#     "t" :(2, 0, 1),
+#     "y" :(1, 2, 3),
+#     }
+# # 
+# print(check_solution( piece_loc ))
+# make_graphic( piece_loc, 1 )
